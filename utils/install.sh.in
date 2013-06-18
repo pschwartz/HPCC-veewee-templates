@@ -1,0 +1,43 @@
+#!/bin/bash
+
+uuencode=1
+binary=0
+
+function untar_payload()
+{
+	match=$(grep --text --line-number '^PAYLOAD:$' $0 | cut -d ':' -f 1)
+	payload_start=$((match + 1))
+	if [[ $binary -ne 0 ]]; then
+		tail -n +$payload_start $0 | tar -xzvf -
+	fi
+	if [[ $uuencode -ne 0 ]]; then
+		tail -n +$payload_start $0 | uudecode | tar -xzvf -
+	fi
+}
+
+yum -y install sharutils
+
+CWD=`pwd`
+untar_payload
+for i in `ls`
+do
+        yum localinstall -y $i
+done
+
+cat > /etc/init/ttyS0.conf << EOM
+# ttyS0 - agetty
+#
+# This service maintains a agetty on ttyS0.
+
+stop on runlevel [S016]
+start on runlevel [23]
+
+respawn
+exec agetty -h -L -w /dev/ttyS0 115200 vt102
+EOM
+
+kernel_version=$(uname -r)
+dracut -a growroot -f /boot/initramfs-${kernel_version}.img
+grubby --update-kernel=ALL --args=console=ttyS0,115200
+
+exit 0
